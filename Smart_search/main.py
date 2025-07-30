@@ -7,7 +7,9 @@ import os
 import base64
 import io
 
-from sentence_transformers import SentenceTransformer
+import torch
+import torchvision.transforms as transforms
+import torchvision.models as models
 from sklearn.metrics.pairwise import cosine_similarity
 
 app = FastAPI()
@@ -20,46 +22,47 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# إعدادات المسارات
+# المسار للصور
 images_folder = "images"
-vectors_file = "image_vectors.npy"
-names_file = "image_names.npy"
+image_vectors = []
+image_names = []
 
-# تحميل نموذج CLIP
-clip_model = SentenceTransformer("clip-ViT-B-32")
+# تحميل نموذج التعرف على الصور
+model = models.resnet50(pretrained=True)
+model.eval()
 
-# تحميل الصور أو استرجاعها من ملفات التخزين
-if os.path.exists(vectors_file) and os.path.exists(names_file):
-    image_vectors = np.load(vectors_file)
-    image_names = np.load(names_file)
-else:
-    image_vectors = []
-    image_names = []
+transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor()
+])
 
-    for filename in os.listdir(images_folder):
-        if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-            path = os.path.join(images_folder, filename)
-            img = Image.open(path).convert("RGB")
-            vec = clip_model.encode(img, convert_to_numpy=True, show_progress_bar=False)
-            image_vectors.append(vec)
-            image_names.append(filename)
+def extract_vector(img: Image.Image):
+    img_tensor = transform(img).unsqueeze(0)
+    with torch.no_grad():
+        vector = model(img_tensor)
+    return vector.numpy().flatten()
 
-    image_vectors = np.array(image_vectors)
-    np.save(vectors_file, image_vectors)
-    np.save(names_file, image_names)
+# تجهيز قاعدة بيانات الصور
+for filename in os.listdir(images_folder):
+    if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+        path = os.path.join(images_folder, filename)
+        img = Image.open(path).convert("RGB")
+        vec = extract_vector(img)
+        image_vectors.append(vec)
+        image_names.append(filename)
 
 @app.post("/search_by_image/")
 async def search_by_image(file: UploadFile = File(...)):
     try:
-        # فتح الصورة المرسلة من المستخدم
+        # فتح الصورة المدخلة
         input_img = Image.open(file.file).convert("RGB")
-        query_vector = clip_model.encode(input_img, convert_to_numpy=True)
+        query_vector = extract_vector(input_img)
 
-        # حساب التشابه مع الصور المخزنة
+        # حساب التشابه
         similarities = cosine_similarity([query_vector], image_vectors)[0]
         top_indices = similarities.argsort()[-5:][::-1]
 
-        # تجهيز الرد مع الصور المشابهة
+        # تجهيز الصور المشابهة
         results = []
         for idx in top_indices:
             image_path = os.path.join(images_folder, image_names[idx])
