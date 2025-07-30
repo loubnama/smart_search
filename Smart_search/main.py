@@ -6,37 +6,41 @@ import numpy as np
 import os
 import base64
 import io
-
 import torch
 import torchvision.transforms as transforms
 import torchvision.models as models
 from sklearn.metrics.pairwise import cosine_similarity
+import uvicorn
 
-app = FastAPI()
+app = FastAPI(title="Image Similarity Search API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # اسمح لجميع المصادر
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# المسار للصور
-images_folder = "images"
+# مسار مجلد الصور
+images_folder = "/Users/lubna/Desktop/Smart_search/images"  # للنشر على Render
+# images_folder = "./images"  # للاختبار محليًا
 image_vectors = []
 image_names = []
 
-# تحميل نموذج التعرف على الصور
-model = models.resnet50(pretrained=True)
+# تحميل نموذج ResNet50
+model = models.resnet50(weights="ResNet50_Weights.IMAGENET1K_V1")
 model.eval()
 
+# تحويل الصور
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
-    transforms.ToTensor()
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
 def extract_vector(img: Image.Image):
+    img.thumbnail((256, 256))  # تقليل الحجم قبل المعالجة
     img_tensor = transform(img).unsqueeze(0)
     with torch.no_grad():
         vector = model(img_tensor)
@@ -60,14 +64,16 @@ async def search_by_image(file: UploadFile = File(...)):
 
         # حساب التشابه
         similarities = cosine_similarity([query_vector], image_vectors)[0]
-        top_indices = similarities.argsort()[-5:][::-1]
+        top_indices = similarities.argsort()[-2:][::-1]  # إرجاع صورتين فقط
 
         # تجهيز الصور المشابهة
         results = []
         for idx in top_indices:
             image_path = os.path.join(images_folder, image_names[idx])
-            with open(image_path, "rb") as image_file:
-                encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
+            with Image.open(image_path) as img:
+                buffered = io.BytesIO()
+                img.save(buffered, format="JPEG", quality=50)
+                encoded_string = base64.b64encode(buffered.getvalue()).decode("utf-8")
             results.append({
                 "filename": image_names[idx],
                 "score": float(similarities[idx]),
@@ -78,3 +84,6 @@ async def search_by_image(file: UploadFile = File(...)):
 
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=10000)
