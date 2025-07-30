@@ -1,6 +1,6 @@
 fastapi
 uvicorn
-torch
-torchvision
-scikit-learn
 pillow
+numpy
+scikit-learn
+sentence-transformers
