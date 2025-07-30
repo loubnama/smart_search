@@ -23,13 +23,13 @@ app.add_middleware(
 )
 
 # مسار مجلد الصور
-images_folder = "smart_search/Smart_search/images"  # للنشر على Render
+images_folder = "Smart_search/images"  # للنشر على Render
 # images_folder = "./images"  # للاختبار محليًا
 image_vectors = []
 image_names = []
 
 # تحميل نموذج ResNet50
-model = models.resnet50(weights="ResNet50_Weights.IMAGENET1K_V1")
+model = models.resnet50(weights="ResNet50_Weights.IMAGENET1K_V1")  # إصلاح التحذير
 model.eval()
 
 # تحويل الصور
@@ -46,8 +46,8 @@ def extract_vector(img: Image.Image):
         vector = model(img_tensor)
     return vector.numpy().flatten()
 
-# تجهيز قاعدة بيانات الصور
-for filename in os.listdir(images_folder):
+# تجهيز قاعدة بيانات الصور (الحد الأقصى 20 صورة)
+for filename in os.listdir(images_folder)[:20]:  # الحد الأقصى 20 صورة
     if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
         path = os.path.join(images_folder, filename)
         img = Image.open(path).convert("RGB")
@@ -60,6 +60,7 @@ async def search_by_image(file: UploadFile = File(...)):
     try:
         # فتح الصورة المدخلة
         input_img = Image.open(file.file).convert("RGB")
+        input_img.thumbnail((256, 256))  # تقليل الحجم
         query_vector = extract_vector(input_img)
 
         # حساب التشابه
@@ -72,7 +73,7 @@ async def search_by_image(file: UploadFile = File(...)):
             image_path = os.path.join(images_folder, image_names[idx])
             with Image.open(image_path) as img:
                 buffered = io.BytesIO()
-                img.save(buffered, format="JPEG", quality=50)
+                img.save(buffered, format="JPEG", quality=50)  # جودة منخفضة
                 encoded_string = base64.b64encode(buffered.getvalue()).decode("utf-8")
             results.append({
                 "filename": image_names[idx],
@@ -85,4 +86,5 @@ async def search_by_image(file: UploadFile = File(...)):
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=10000)
