@@ -23,7 +23,7 @@ app.add_middleware(
 )
 
 # مسار مجلد الصور
-images_folder = "/Users/lubna/Desktop/Smart_search/images"  # للنشر على Render
+images_folder = "smart_search/Smart_search/images"  # للنشر على Render
 # images_folder = "./images"  # للاختبار محليًا
 image_vectors = []
 image_names = []
