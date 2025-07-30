@@ -24,8 +24,8 @@ app.add_middleware(
 )
 
 # مسار ملف .zip ومجلد الصور
-zip_path = "/app/images.zip"  # للنشر على Render
-images_folder = "/app/images"  # المجلد الذي سيتم فك الضغط إليه
+zip_path = "/app/Smart_search/images.zip"  # للنشر على Render
+images_folder = "/app/Smart_search/images"  # المجلد الذي سيتم فك الضغط إليه
 # zip_path = "./images.zip"  # للاختبار محليًا
 # images_folder = "./images"  # للاختبار محليًا
 image_vectors = []
