@@ -11,6 +11,7 @@ import torchvision.transforms as transforms
 import torchvision.models as models
 from sklearn.metrics.pairwise import cosine_similarity
 import uvicorn
+import zipfile
 
 app = FastAPI(title="Image Similarity Search API")
 
@@ -22,14 +23,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# مسار مجلد الصور
-images_folder = "smart_search/Smart_search/images"  # للنشر على Render
+# مسار ملف .zip ومجلد الصور
+zip_path = "smart_search/Smart_search/images.zip"  # مسار ملف .zip على Render
+images_folder = "smart_search/Smart_search/images"  # المجلد الذي سيتم فك الضغط إليه
+# zip_path = "./images.zip"  # للاختبار محليًا
 # images_folder = "./images"  # للاختبار محليًا
 image_vectors = []
 image_names = []
 
+# فك ضغط ملف .zip
+def extract_zip():
+    if not os.path.exists(images_folder):
+        os.makedirs(images_folder)
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(images_folder)
+
+# تشغيل فك الضغط عند بدء التطبيق
+extract_zip()
+
 # تحميل نموذج ResNet50
-model = models.resnet50(weights="ResNet50_Weights.IMAGENET1K_V1")  # إصلاح التحذير
+model = models.resnet50(weights="ResNet50_Weights.IMAGENET1K_V1")
 model.eval()
 
 # تحويل الصور
