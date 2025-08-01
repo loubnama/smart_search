@@ -14,7 +14,7 @@ import uvicorn
 import requests
 import pickle
 import logging
-import gc  # إضافة مكتبة لتحرير الذاكرة
+import gc
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -57,11 +57,10 @@ image_urls = [
 image_vectors = []
 image_names = []
 
-# تحميل نموذج ResNet50
-model = models.resnet50(weights="ResNet50_Weights.IMAGENET1K_V1")
+# استخدام ResNet18 بدلاً من ResNet50 لتقليل استهلاك الذاكرة
+model = models.resnet18(weights="ResNet18_Weights.IMAGENET1K_V1")
 model.eval()
 
-# تحويل الصور
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -78,11 +77,18 @@ def extract_vector(img: Image.Image):
 # تحميل أو تجهيز قاعدة بيانات الصور
 vectors_file = "vectors.pkl"
 if os.path.exists(vectors_file):
-    with open(vectors_file, "rb") as f:
-        data = pickle.load(f)
-        image_vectors = data["vectors"]
-        image_names = data["names"]
+    try:
+        with open(vectors_file, "rb") as f:
+            data = pickle.load(f)
+            image_vectors = data["vectors"]
+            image_names = data["names"]
+            logger.info(f"Loaded {len(image_vectors)} vectors from {vectors_file}")
+    except Exception as e:
+        logger.error(f"Error loading vectors.pkl: {str(e)}. Please regenerate the file locally.")
+        image_vectors = []
+        image_names = []
 else:
+    logger.warning("vectors.pkl not found. Generating vectors (this should be done locally).")
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
@@ -95,7 +101,6 @@ else:
                 vec = extract_vector(img)
                 image_vectors.append(vec)
                 image_names.append(image_info["filename"])
-                # تحرير الذاكرة
                 img.close()
                 del img, vec
                 gc.collect()
@@ -114,7 +119,7 @@ async def search_by_image(file: UploadFile = File(...)):
     try:
         input_img = Image.open(file.file).convert("RGB")
         query_vector = extract_vector(input_img)
-        input_img.close()  # تحرير الذاكرة
+        input_img.close()
         del input_img
         gc.collect()
 
