@@ -14,6 +14,7 @@ import uvicorn
 import requests
 import pickle
 import logging
+import gc  # إضافة مكتبة لتحرير الذاكرة
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -56,9 +57,11 @@ image_urls = [
 image_vectors = []
 image_names = []
 
+# تحميل نموذج ResNet50
 model = models.resnet50(weights="ResNet50_Weights.IMAGENET1K_V1")
 model.eval()
 
+# تحويل الصور
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -72,6 +75,7 @@ def extract_vector(img: Image.Image):
         vector = model(img_tensor)
     return vector.numpy().flatten()
 
+# تحميل أو تجهيز قاعدة بيانات الصور
 vectors_file = "vectors.pkl"
 if os.path.exists(vectors_file):
     with open(vectors_file, "rb") as f:
@@ -84,13 +88,17 @@ else:
     }
     for image_info in image_urls:
         try:
-            response = requests.get(image_info["url"], headers=headers)
+            response = requests.get(image_info["url"], headers=headers, stream=True)
             logger.info(f"Fetching {image_info['filename']}: Status {response.status_code}, Content-Type: {response.headers.get('Content-Type')}")
             if response.status_code == 200 and 'image' in response.headers.get('Content-Type', ''):
                 img = Image.open(io.BytesIO(response.content)).convert("RGB")
                 vec = extract_vector(img)
                 image_vectors.append(vec)
                 image_names.append(image_info["filename"])
+                # تحرير الذاكرة
+                img.close()
+                del img, vec
+                gc.collect()
             else:
                 logger.error(f"Invalid response for {image_info['filename']}: Status {response.status_code}, Content-Type: {response.headers.get('Content-Type')}")
                 if 'text/html' in response.headers.get('Content-Type', ''):
@@ -106,6 +114,9 @@ async def search_by_image(file: UploadFile = File(...)):
     try:
         input_img = Image.open(file.file).convert("RGB")
         query_vector = extract_vector(input_img)
+        input_img.close()  # تحرير الذاكرة
+        del input_img
+        gc.collect()
 
         similarities = cosine_similarity([query_vector], image_vectors)[0]
         top_indices = similarities.argsort()[-2:][::-1]
@@ -117,7 +128,7 @@ async def search_by_image(file: UploadFile = File(...)):
         for idx in top_indices:
             image_info = image_urls[idx]
             try:
-                response = requests.get(image_info["url"], headers=headers)
+                response = requests.get(image_info["url"], headers=headers, stream=True)
                 logger.info(f"Fetching result {image_info['filename']}: Status {response.status_code}, Content-Type: {response.headers.get('Content-Type')}")
                 if response.status_code == 200 and 'image' in response.headers.get('Content-Type', ''):
                     with Image.open(io.BytesIO(response.content)) as img:
@@ -148,5 +159,5 @@ async def search_by_image(file: UploadFile = File(...)):
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8000))  # استخدام PORT من Render أو 8000 افتراضيًا
+    port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
